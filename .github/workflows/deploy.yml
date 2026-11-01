@@ -18,28 +18,30 @@ jobs:
 
       - run: npm ci
 
-      - name: Diagnóstico de secretos (solo longitudes)
-        env:
-          S3_BUCKET: ${{ secrets.S3_BUCKET }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          AWS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        run: |
-          echo "S3_BUCKET longitud: ${#S3_BUCKET} (esperado 34)"
-          echo "EC2_HOST longitud: ${#EC2_HOST}"
-          echo "AWS_ACCESS_KEY_ID longitud: ${#AWS_KEY}"
-
       - name: Build con assetPrefix hacia S3
         run: npm run build
         env:
           ASSET_PREFIX: https://${{ secrets.S3_BUCKET }}.s3.us-east-1.amazonaws.com
 
-      - name: Configurar credenciales de AWS
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
+      - name: Configurar credenciales de AWS (limpia espacios y saltos de línea)
+        env:
+          RAW_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          RAW_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          RAW_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          clean() { printf '%s' "$1" | tr -d '[:space:]' | sed 's/^aws_[a-z_]*=//'; }
+          KEY=$(clean "$RAW_KEY")
+          SECRET=$(clean "$RAW_SECRET")
+          TOKEN=$(clean "$RAW_TOKEN")
+          echo "::add-mask::$KEY"
+          echo "::add-mask::$SECRET"
+          echo "::add-mask::$TOKEN"
+          echo "Longitudes -> key: ${#KEY} (esperado 20), secret: ${#SECRET} (esperado 40), token: ${#TOKEN}"
+          echo "AWS_ACCESS_KEY_ID=$KEY" >> "$GITHUB_ENV"
+          echo "AWS_SECRET_ACCESS_KEY=$SECRET" >> "$GITHUB_ENV"
+          echo "AWS_SESSION_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "AWS_DEFAULT_REGION=us-east-1" >> "$GITHUB_ENV"
+          AWS_ACCESS_KEY_ID="$KEY" AWS_SECRET_ACCESS_KEY="$SECRET" AWS_SESSION_TOKEN="$TOKEN" AWS_DEFAULT_REGION=us-east-1 aws sts get-caller-identity > /dev/null && echo "Credenciales válidas"
 
       - name: Subir estáticos (_next) a S3
         run: |
